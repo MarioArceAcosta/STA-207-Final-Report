@@ -1,0 +1,44 @@
+---
+title: "STA 207"
+author: "Romy Gou, Seoyoung Kim, Zichen Liu, Mario Arce Acosta"
+date: "`r Sys.Date()`"
+output: rmdformats::html_clean
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r}
+#install.packages("rmdformats")
+```
+
+## Background
+
+```{r}
+
+```
+
+Describe the source of data Describe the experiment including potential caveats
+
+## Question of Interest
+
+Clearly state the question(s) of interest you aim to answer. Explain why they are of interest.
+
+## Descriptive analysis
+
+Provide informative summary statistics and visualizations. Use these summaries to motivate or justify subsequent choices in data preprocessing and modeling
+
+## Inferential analysis
+
+Propose and justify statistical models suitable for your questions. Clearly state model assumptions. Conduct formal inference and interpret results in context.
+
+## Sensitivity analysis
+
+Investigate plausibility of model assumptions Discuss robustness of results to alternative choices of models or assumptions
+
+## Conclusion
+
+Summarize findings.
