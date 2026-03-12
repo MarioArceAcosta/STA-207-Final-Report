@@ -35,6 +35,18 @@ Provide informative summary statistics and visualizations. Use these summaries t
 
 Propose and justify statistical models suitable for your questions. Clearly state model assumptions. Conduct formal inference and interpret results in context.
 
+### Hierarchical Linear Model
+$$
+\begin{equation}
+\begin{aligned}
+    Y_{ijk} &= \big[ \gamma_{000} + \gamma_{001}(\text{SmallClass}_k) + \gamma_{010}(\text{Minority}_{jk}) + \gamma_{011}(\text{SmallClass}_k \times \text{Minority}_{jk}) + \gamma_{020}(\text{FreeLunch}_{jk}) \big] \\
+    &+ \big[ \gamma_{100} + \gamma_{101}(\text{SmallClass}_k) + \gamma_{110}(\text{Minority}_{jk}) + \gamma_{111}(\text{SmallClass}_k \times \text{Minority}_{jk}) \big] \text{Grade2}_{ijk} \\
+    &+ \big[ \gamma_{200} + \gamma_{201}(\text{SmallClass}_k) + \gamma_{210}(\text{Minority}_{jk}) + \gamma_{211}(\text{SmallClass}_k \times \text{Minority}_{jk}) \big] \text{Grade3}_{ijk} \\
+    &+ v_{00k} + u_{0jk} + \epsilon_{ijk}
+\end{aligned}
+\end{equation}
+$$
+
 ## Sensitivity analysis
 
 Investigate plausibility of model assumptions Discuss robustness of results to alternative choices of models or assumptions
