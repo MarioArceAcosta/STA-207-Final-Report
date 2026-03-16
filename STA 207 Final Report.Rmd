@@ -9,17 +9,30 @@ output: rmdformats::html_clean
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+## Libraries
 
 ```{r}
-#install.packages("rmdformats")
+#library(MASS)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+library(knitr)
+library(kableExtra)
+library(car)
+library(ggalluvial)
+library(haven)
+library(lme4)
+library(lmerTest)
+# install.packages("performance")
+library(performance)
+library(webshot2)
+library(modelsummary)
+library(broom.mixed)
+library(stringr)
 ```
 
 ## Background
-
-```{r}
-
-```
 
 Describe the source of data Describe the experiment including potential caveats
 
@@ -27,29 +40,412 @@ Describe the source of data Describe the experiment including potential caveats
 
 Clearly state the question(s) of interest you aim to answer. Explain why they are of interest.
 
+## Data Cleaning and Preparing
+
+```{r Read Data}
+STAR_Students <- read_sav("STAR_Students.sav")     
+STAR_Students
+
+STAR_K_3_Schools <- read_sav("STAR_K-3_Schools.sav")
+STAR_K_3_Schools
+```
+
+```{r Restrict to three grades}
+star_first_to_third_grade <- STAR_Students %>% 
+  select(1:7, starts_with("g1"), starts_with("g2"), starts_with("g3")) %>%
+  na.omit(race, g1treadss, g1tmathss, g1tlistss, g2treadss, g2tmathss, g2tlistss, g3treadss, g3tmathss, g3tlistss)
+```
+
+```{r Cleaning and }
+STAR_long <- star_first_to_third_grade %>%
+  pivot_longer(
+    cols = matches("^g\\d"), 
+    names_to = c("grade", ".value"), 
+    names_pattern = "g(\\d)(.*)"
+  ) %>%
+  mutate(
+    small_class = as.factor(ifelse(classtype==1, 1, 0)),
+    minority = as.factor(ifelse(race!=1, 1, 0)),
+    classtype = as.factor(classtype),
+    grade = as.factor(grade),
+    schid = as.factor(schid),
+    stdntid = as.factor(stdntid)
+  ) %>%
+  group_by(stdntid) %>%
+  filter(n_distinct(schid, na.rm = TRUE) == 1) %>%
+  ungroup()
+
+# To see how many students you have left:
+print(paste("Students remaining:", n_distinct(STAR_long$stdntid)))
+```
+
 ## Descriptive analysis
 
-Provide informative summary statistics and visualizations. Use these summaries to motivate or justify subsequent choices in data preprocessing and modeling
+Even though STAR intended random assignment, many students did not stay in their assigned class type.
+
+### Noncompliance and Attrition
+
+```{r Alluvial Plot}
+#| fig-width: 8
+#| fig-height: 5
+# drop g1classtype NA
+sum(is.na(STAR_Students$g1classtype))
+
+data_alluvium <- subset(STAR_Students, select = c(gkclasstype, g1classtype, g2classtype, g3classtype))
+
+class_levels <- c("small", "regular", "regular-aide")
+
+data_alluvium <- data_alluvium %>%
+    mutate(across(everything(),
+                  ~factor(as.numeric(.), levels = c(1, 2, 3),
+                          labels = class_levels))) %>%
+    mutate(across(everything(),
+                  ~fct_explicit_na(., na_level = "Unknown"))) %>%
+    # Remove any row where at least one grade is Unknown
+    filter(if_all(everything(), ~ . != "Unknown"))
+
+
+class_levels <- c("small", "regular", "regular-aide")
+data_alluvium <- data_alluvium %>%
+    mutate(across(everything(), 
+                  ~factor(as.numeric(.), levels = c(1, 2, 3), 
+                          labels = class_levels))) %>%
+    mutate(across(everything(), 
+                  ~fct_explicit_na(., na_level = "Unknown")))
+
+data_summary <- data_alluvium %>%
+    count(gkclasstype, g1classtype, g2classtype, g3classtype, name = "Freq") %>%
+    mutate(path_id = row_number())  
+
+data_long <- data_summary %>%
+    pivot_longer(cols = starts_with("g"), names_to = "grade", values_to = "class")
+
+data_long$grade <- factor(data_long$grade,
+            levels = c("gkclasstype", "g1classtype", "g2classtype","g3classtype"),
+            labels = c("Kindergarten", "Grade 1", "Grade 2", "Grade 3"))
+
+ggplot(data_long, aes(x = grade, stratum = class, alluvium = path_id, y = Freq, fill = class)) +
+    geom_flow(stat = "alluvium", alpha = 0.7) + 
+    geom_stratum() + 
+    scale_fill_manual(values = c("gold2", "skyblue2", "darkseagreen3")) +
+    theme_minimal() +
+    labs(title = "Fig3.1: Alluvial Plot of Students' Transfer", x = "Grade", y = "") +
+    theme(legend.position = "right",
+          axis.text.x = element_text(hjust = 0.5),
+          axis.text.y = element_blank(),  
+          axis.ticks.y = element_blank(), 
+          axis.ticks.x = element_blank(), 
+          panel.grid.major.y = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          plot.title = element_text(hjust = 0.5))
+```
+
+Drop rows with STAR_Students\$g1classtype=NA (4772 rows dropped)
+
+Originally, STAR planned to keep students in the same classroom type from kindergarten through third grade, but that didn’t last. After parents raised concerns, noted in Hanushek (1999), the study was modified so that at the start of first grade, all students in regular‑size classes—whether or not they had an aide—were randomly reassigned to either a regular class with an aide or one without. Students who began in small classes weren’t part of this reshuffling and stayed in small classes for the rest of the study.
+
+Beyond this official change, schools didn’t always follow the assignment rules in practice. Some, especially smaller ones, made informal adjustments once the year began. These weren’t parent-driven; they were practical decisions by administrators or teachers trying to manage real‑world constraints. Schools moved students to balance class sizes, address classroom dynamics, and etc. None of this was part of the experimental protocol, but it still mattered because it introduced nonrandom noncompliance. Finn & Achilles (1999) note that this weakens the clean randomization and can bias causal estimates.
+
+### Class Size vs Class Type Density
+
+```{r}
+#| fig-width: 8
+#| fig-height: 5
+
+STAR_viz <- STAR_long %>%
+  mutate(
+    # Swapped 'small_class' for 'classtype' to capture all three assignments
+    assigned_type = factor(classtype, 
+                           levels = c(1, 2, 3), # Standard STAR numeric codes
+                           labels = c("Small Class", "Regular Class", "Regular + Aide")),
+    grade_label = paste("Grade", grade) 
+  )
+
+# 2. Create the hybrid Violin + Boxplot
+class_density <- ggplot(STAR_viz, aes(x = assigned_type, y = classsize, fill = assigned_type)) +
+  
+  # Violin Plot
+  geom_violin(alpha = 0.4, color = NA, trim = FALSE) + 
+  
+  # Boxplot
+  # width = 0.2 makes it thin so it fits perfectly inside the "belly" of the violin
+  geom_boxplot(width = 0.2, alpha = 0.8, color = "black") + 
+  
+  # Facet by grade
+  facet_wrap(~ grade_label) +
+  
+  # Formatting & Aesthetics
+  theme_minimal(base_size = 14) + 
+  labs(title = "Manipulation Check: Actual Class Size Distribution",
+       subtitle = "STAR Project Compliance Check by Grade",
+       x = "Assigned Class Type",
+       y = "Actual Number of Students in Class") +
+  theme(legend.position = "none",
+        strip.text = element_text(face = "bold", size = 14),
+        panel.grid.minor = element_blank()) + 
+  
+  # The Colorful Part: Added a third color ("#C77CFF" / Purple) for the Aide class
+  scale_fill_manual(values = c("Small Class" = "#F8766D", 
+                               "Regular Class" = "#00BFC4", 
+                               "Regular + Aide" = "#C77CFF")) +
+  
+  # Keeping this here in case you add geom_jitter() back into your plot later!
+  scale_color_manual(values = c("Small Class" = "#D95F56", 
+                                "Regular Class" = "#008B8E", 
+                                "Regular + Aide" = "#A566D6"))
+
+# Add this to the very bottom of your ggplot code:
+class_density <- class_density +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+class_density
+
+ggsave(
+  filename = "class_density.png", 
+  plot     = class_density
+  )
+```
+
+*Provide informative summary statistics and visualizations. Use these summaries to motivate or justify subsequent choices in data preprocessing and modeling*
 
 ## Inferential analysis
 
-Propose and justify statistical models suitable for your questions. Clearly state model assumptions. Conduct formal inference and interpret results in context.
-
 ### Hierarchical Linear Model
-$$
-\begin{equation}
-\begin{aligned}
-    Y_{ijk} &= \big[ \gamma_{000} + \gamma_{001}(\text{SmallClass}_k) + \gamma_{010}(\text{Minority}_{jk}) + \gamma_{011}(\text{SmallClass}_k \times \text{Minority}_{jk}) + \gamma_{020}(\text{FreeLunch}_{jk}) \big] \\
-    &+ \big[ \gamma_{100} + \gamma_{101}(\text{SmallClass}_k) + \gamma_{110}(\text{Minority}_{jk}) + \gamma_{111}(\text{SmallClass}_k \times \text{Minority}_{jk}) \big] \text{Grade2}_{ijk} \\
-    &+ \big[ \gamma_{200} + \gamma_{201}(\text{SmallClass}_k) + \gamma_{210}(\text{Minority}_{jk}) + \gamma_{211}(\text{SmallClass}_k \times \text{Minority}_{jk}) \big] \text{Grade3}_{ijk} \\
-    &+ v_{00k} + u_{0jk} + \epsilon_{ijk}
-\end{aligned}
-\end{equation}
-$$
+
+$$ \begin{equation} \begin{aligned}     Y_{ijk} &= \big[ \gamma_{000} + \gamma_{001}(\text{SmallClass}_k) + \gamma_{010}(\text{Minority}_{jk}) + \gamma_{011}(\text{SmallClass}_k \times \text{Minority}_{jk}) + \gamma_{020}(\text{FreeLunch}_{jk}) \big] \\     &+ \big[ \gamma_{100} + \gamma_{101}(\text{SmallClass}_k) + \gamma_{110}(\text{Minority}_{jk}) + \gamma_{111}(\text{SmallClass}_k \times \text{Minority}_{jk}) \big] \text{Grade2}_{ijk} \\     &+ \big[ \gamma_{200} + \gamma_{201}(\text{SmallClass}_k) + \gamma_{210}(\text{Minority}_{jk}) + \gamma_{211}(\text{SmallClass}_k \times \text{Minority}_{jk}) \big] \text{Grade3}_{ijk} \\     &+ v_{00k} + u_{0jk} + \epsilon_{ijk} \end{aligned} \end{equation} $$ where $i = 0, 1, 2$ and represents the different grade levels. $i=0$ is the 1st grade and our baseline for this longitudinal analysis.
+
+```{r HLM Specification}
+
+# Model 1: Base (Categorical)
+STAR_long$classtype = relevel(STAR_long$classtype, ref=2)
+
+hlm_categorical <- lmer(
+  tmathss ~ freelunch + classtype * minority * grade + (1 | schid) + (1 | stdntid), 
+  
+  data = STAR_long,
+  REML = TRUE
+)
+summary(hlm_categorical)
+
+# Model 2: Dummy
+hlm_dummy <- lmer(
+  tmathss ~ small_class * minority * grade + 
+  (1 | schid) + (1 | stdntid), 
+  data = STAR_long,
+  REML = TRUE
+)
+summary(hlm_dummy)
+
+# Model 3: Dummy + Free/Reduced Lunch
+hlm_dummy_2 <- lmer(
+  tmathss ~ freelunch + small_class * minority * grade + 
+  (1 | schid) + (1 | stdntid), 
+  data = STAR_long,
+  REML = TRUE 
+)
+summary(hlm_dummy_2)
+
+# Model 4: Null Model
+hlm_null <- lmer(tmathss ~ 1 + (1 | schid) + (1 | stdntid), data = STAR_long, REML = TRUE)
+summary(hlm_null)
+```
+
+```{r}
+#| fig-width: 8
+#| fig-height: 5
+
+# =========================================================
+# LEVEL 1 PLOTS
+# =========================================================
+# 1A. Homoscedasticity (ggplot version)
+homo_df <- data.frame(Fitted = fitted(hlm_dummy_2), Residuals = resid(hlm_dummy_2))
+p1_homo <- ggplot(homo_df, aes(x = Fitted, y = Residuals)) +
+  geom_point(alpha = 0.2, color = "black") +
+  geom_smooth(method = "loess", color = "blue", se = FALSE) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  theme_minimal() +
+  labs(title = "L1: Homoscedasticity", x = "Fitted Values", y = "Residuals")
+
+# 1B. ACF Plot (ggplot version)
+acf_calc <- acf(resid(hlm_dummy_2), plot = FALSE)
+acf_df <- data.frame(lag = acf_calc$lag, acf = acf_calc$acf)
+ci_bound <- qnorm((1 + 0.95)/2) / sqrt(acf_calc$n.used)
+
+p2_acf <- ggplot(acf_df, aes(x = lag, y = acf)) +
+  geom_segment(aes(xend = lag, yend = 0)) +
+  geom_hline(yintercept = c(ci_bound, -ci_bound), color = "blue", linetype = "dashed") +
+  geom_hline(yintercept = 0, color = "black") +
+  theme_minimal() +
+  labs(title = "L1: Autocorrelation (ACF)", x = "Lag", y = "ACF")
+
+# 1C. Normality of Residuals
+res_df <- data.frame(residuals = resid(hlm_dummy_2))
+p3_norm1 <- ggplot(res_df, aes(x = residuals)) +
+  geom_density(fill = "steelblue", alpha = 0.5, color = NA) +
+  stat_function(fun = dnorm, 
+                args = list(mean = mean(res_df$residuals), sd = sd(res_df$residuals)), 
+                color = "red", linewidth = 1, linetype = "dashed") +
+  theme_minimal() +
+  labs(title = "L1: Normality of Residuals", x = "Residuals", y = "Density")
+
+# =========================================================
+# LEVEL 2 & 3 PLOTS
+# =========================================================
+
+# Extract random intercepts
+student_intercepts <- ranef(hlm_dummy_2)$stdntid
+school_intercepts <- ranef(hlm_dummy_2)$schid
+
+# 2. Level 2 (Student) Normality
+std_df <- data.frame(intercepts = student_intercepts$`(Intercept)`)
+p4_norm2 <- ggplot(std_df, aes(x = intercepts)) +
+  geom_density(fill = "seagreen", alpha = 0.5, color = NA) +
+  stat_function(fun = dnorm, 
+                args = list(mean = mean(std_df$intercepts, na.rm=TRUE), sd = sd(std_df$intercepts, na.rm=TRUE)), 
+                color = "red", linewidth = 1, linetype = "dashed") +
+  theme_minimal() +
+  labs(title = "L2: Student Intercepts", x = "Student Intercepts", y = "Density")
+
+# 3. Level 3 (School) Normality
+sch_df <- data.frame(intercepts = school_intercepts$`(Intercept)`)
+p5_norm3 <- ggplot(sch_df, aes(x = intercepts)) +
+  geom_density(fill = "darkorange", alpha = 0.5, color = NA) +
+  stat_function(fun = dnorm, 
+                args = list(mean = mean(sch_df$intercepts), sd = sd(sch_df$intercepts)), 
+                color = "red", linewidth = 1, linetype = "dashed") +
+  theme_minimal() +
+  labs(title = "L3: School Intercepts", x = "School Intercepts", y = "Density")
+
+# Top row (1x2): Homoscedasticity | ACF
+# Bottom row (1x3): L1 Normality | L2 Normality | L3 Normality
+
+final_diagnostic_grid <- (p1_homo | p2_acf) / (p3_norm1 | p4_norm2 | p5_norm3)
+
+# Add the universal title
+final_diagnostic_grid <- final_diagnostic_grid + plot_annotation(
+  title = "Hierarchical Linear Model Diagnostics",
+  subtitle = "Level 1 (Observations), Level 2 (Students), and Level 3 (Schools)"
+)
+
+# Display the grid in your R viewer
+final_diagnostic_grid
+```
+
+```{r}
+icc(hlm_null, by_group = TRUE)
+```
+
+```{r}
+# Define your models in a list
+hlm_models <- list(
+  "HLM: Categorical Class Type" = hlm_categorical,
+  "HLM: Binary Class Type" = hlm_dummy,
+  "HLM: Binary Class Type + Free Lunch Indicator" = hlm_dummy_2
+  )
+```
+
+\
+
+```{r}
+#| fig-width: 8
+#| fig-height: 5
+#| 
+# ==========================================
+# 1. PREPARE THE DATA
+# ==========================================
+coef_data <- tidy(hlm_dummy_2, effects = "fixed", conf.int = TRUE) %>%
+  filter(term != "(Intercept)")
+
+coef_clean <- coef_data %>%
+  mutate(
+    Effect_Group = ifelse(str_detect(term, ":"), "Interaction Effects", "Main Effects"),
+    Clean_Term = case_when(
+      term == "freelunch" ~ "Free/Reduced Lunch", 
+      term == "small_class1" ~ "Small Class",
+      term == "minority1" ~ "Minority Student",
+      term == "grade2" ~ "Grade 2",
+      term == "grade3" ~ "Grade 3",
+      term == "small_class1:minority1" ~ "Small Class × Minority",
+      term == "small_class1:grade2" ~ "Small Class × Grade 2",
+      term == "small_class1:grade3" ~ "Small Class × Grade 3",
+      term == "minority1:grade2" ~ "Minority × Grade 2",
+      term == "minority1:grade3" ~ "Minority × Grade 3",
+      term == "small_class1:minority1:grade2" ~ "Small Class × Minority × Grade 2",
+      term == "small_class1:minority1:grade3" ~ "Small Class × Minority × Grade 3",
+      TRUE ~ term
+    )
+  ) %>%
+  arrange(Effect_Group, estimate) %>%
+  mutate(Clean_Term = factor(Clean_Term, levels = unique(Clean_Term)))
+
+# ==========================================
+# MAIN EFFECTS ONLY
+# ==========================================
+main_data <- coef_clean %>% filter(Effect_Group == "Main Effects")
+
+plot_main <- ggplot(main_data, aes(x = estimate, y = Clean_Term)) +
+  # Reduced linewidth
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black", linewidth = 0.8) +
+  # Reduced size and linewidth
+  geom_pointrange(aes(xmin = conf.low, xmax = conf.high), color = "#2C3E50", size = 0.5, linewidth = 0.8) +
+  
+  # Reduced text size from 6 to 3.5
+  geom_text(aes(label = sprintf("%.2f", estimate)), 
+            vjust = -1.2, size = 3.5, fontface = "bold", color = "#2C3E50") +
+  
+  # Reduced base_size from 18 to 12
+  theme_minimal(base_size = 12) + 
+  theme(
+    panel.grid.minor = element_blank(),
+    # Reduced axis text size from 16 to 10
+    axis.text.y = element_text(face = "bold", size = 10)
+  ) +
+  labs(
+    title = "Main Effects: Baseline Predictors of Math Achievement",
+    x = "Point Estimate (Impact on Math Score)",
+    y = NULL
+  ) +
+  scale_y_discrete(expand = expansion(mult = c(0.1, 0.15)))
+plot_main
+
+# ==========================================
+# INTERACTION EFFECTS ONLY
+# ==========================================
+interaction_data <- coef_clean %>% filter(Effect_Group == "Interaction Effects")
+
+plot_interactions <- ggplot(interaction_data, aes(x = estimate, y = Clean_Term)) +
+  # Reduced linewidth
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black", linewidth = 0.8) +
+  # Reduced size and linewidth
+  geom_pointrange(aes(xmin = conf.low, xmax = conf.high), color = "#E74C3C", size = 0.5, linewidth = 0.8) +
+  
+  # Reduced text size from 6 to 3.5
+  geom_text(aes(label = sprintf("%.2f", estimate)), 
+            vjust = -1.2, size = 3.5, fontface = "bold", color = "#E74C3C") +
+  
+  # Reduced base_size from 18 to 12
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.minor = element_blank(),
+    # Reduced axis text size from 16 to 10
+    axis.text.y = element_text(face = "bold", size = 10)
+  ) +
+  labs(
+    title = "Interaction Effects: Compounding Variables Over Time",
+    x = "Point Estimate (Impact on Math Score)",
+    y = NULL
+  ) +
+  scale_y_discrete(expand = expansion(mult = c(0.05, 0.1)))
+plot_interactions
+```
+
+Propose and justify statistical models suitable for your questions. Clearly state model assumptions. Conduct formal inference and interpret results in context.
 
 ## Sensitivity analysis
 
-Investigate plausibility of model assumptions Discuss robustness of results to alternative choices of models or assumptions
+*Investigate plausibility of model assumptions Discuss robustness of results to alternative choices of models or assumptions*
 
 ## Conclusion
 
