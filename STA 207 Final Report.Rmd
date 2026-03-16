@@ -15,6 +15,7 @@ knitr::opts_chunk$set(
 )
 ```
 
+```{=html}
 <style>
   /* This widens the main content area of the rmdformats template */
   #content, #main {
@@ -29,6 +30,7 @@ knitr::opts_chunk$set(
     height: auto;
   }
 </style>
+```
 
 ## Libraries
 
@@ -52,13 +54,13 @@ library(stringr)
 
 ## Background
 
-### Data Source and Experimental Design 
+### Data Source and Experimental Design
 
 The dataset analyzed in this report originates from Project STAR (Student/Teacher Achievement Ratio), a large-scale longitudinal randomized controlled trial conducted in Tennessee public schools between 1985 and 1989. The raw data was accessed via the Harvard Dataverse repository. The primary objective of the experiment was to evaluate the impact of class size on early childhood academic achievement, which was measured annually through standardized math and reading test scores.
 
 Within the participating schools, entering students and their teachers were randomly assigned to one of three classroom environments: small classes (targeted at 13 to 17 students), regular classes (22 to 25 students), and regular classes supplemented with a full-time teacher’s aide. The design intended for students to remain in their assigned class type from kindergarten through the third grade, allowing researchers to observe cumulative educational effects over time.
 
-### Potential Caveats and Limitations 
+### Potential Caveats and Limitations
 
 While the randomized design of Project STAR provides a strong framework for causal inference, several practical caveats compromise the strict experimental setup. The most prominent challenge is longitudinal student attrition. Over the four-year study period, a substantial number of students transferred schools, missed examinations, or dropped out, which complicates the strict nesting required for our Hierarchical Linear Model (HLM). To quantify this data loss, we visualize the short-term (missing in Grade 2) and long-term (missing in Grade 3) attrition rates for students initially present in Grade 1, categorized by their assigned class types.
 
@@ -66,23 +68,13 @@ As illustrated, the progressive loss of subjects introduces potential missing da
 
 ## Questions of Interest
 
-Motivated by the complexities of nested data structures and the equity imperative highlighted
-in the historical literature, this report aims to answer the following specific questions of interest:
+Motivated by the complexities of nested data structures and the equity imperative highlighted in the historical literature, this report aims to answer the following specific questions of interest:
 
-1.  **Main Effect of Class Size:** To what extent does assignment to a small class environment
-    in early primary grades (1st through 3rd) longitudinally impact math achievement scores
-    compared to regular class assignments?
+1.  **Main Effect of Class Size:** To what extent does assignment to a small class environment in early primary grades (1st through 3rd) longitudinally impact math achievement scores compared to regular class assignments?
 
-2.  **Equity and Interaction Effects:** Does the magnitude of the class-size intervention
-    effect vary significantly across demographic strata? Specifically, is there a statistically
-    significant interaction between class type and student minority status or socio-economic
-    indicators (e.g., free/reduced lunch program eligibility), and does this intervention serve
-    as an equalizing mechanism against Marginalization-Related Diminished Returns?
+2.  **Equity and Interaction Effects:** Does the magnitude of the class-size intervention effect vary significantly across demographic strata? Specifically, is there a statistically significant interaction between class type and student minority status or socio-economic indicators (e.g., free/reduced lunch program eligibility), and does this intervention serve as an equalizing mechanism against Marginalization-Related Diminished Returns?
 
-These questions are of profound interest because they directly bridge classical experimental
-findings with modern, computationally rigorous multi-level modeling. By answering them, we
-can provide highly nuanced, statistically sound policy recommendations regarding the targeted
-allocation of class-size reduction resources.
+These questions are of profound interest because they directly bridge classical experimental findings with modern, computationally rigorous multi-level modeling. By answering them, we can provide highly nuanced, statistically sound policy recommendations regarding the targeted allocation of class-size reduction resources.
 
 ## Data Cleaning and Preparing
 
@@ -909,19 +901,9 @@ plot_main <- ggplot(main_data, aes(x = estimate, y = Clean_Term)) +
 plot_main
 ```
 
-As expected, we observe a substantial and positive longitudinal trajectory in math achievement.
-On average, students score approximately 48.08 points higher in Grade 2 and 82.27 points higher
-in Grade 3 compared to their Grade 1 baseline performance.
-To visualize the magnitude of these parameters, the above plot provides a graphical representation
-of the fixed effect sizes.
+As expected, we observe a substantial and positive longitudinal trajectory in math achievement. On average, students score approximately 48.08 points higher in Grade 2 and 82.27 points higher in Grade 3 compared to their Grade 1 baseline performance. To visualize the magnitude of these parameters, the above plot provides a graphical representation of the fixed effect sizes.
 
-The baseline main effects reveal a profound demographic achievement gap. Controlling for
-all other factors, minority students score substantially lower (−15.81 points) than their majority
-counterparts in standard classroom settings. This directly corroborates the pervasive nature of
-Marginalization-Related Diminished Returns (MDRs) within the educational system. Conversely,
-the isolated main effect of assigning a baseline student (majority, non-free lunch) to a small class
-yields a distinctly positive impact, lifting their math achievement score by an average of 6.75
-points.
+The baseline main effects reveal a profound demographic achievement gap. Controlling for all other factors, minority students score substantially lower (−15.81 points) than their majority counterparts in standard classroom settings. This directly corroborates the pervasive nature of Marginalization-Related Diminished Returns (MDRs) within the educational system. Conversely, the isolated main effect of assigning a baseline student (majority, non-free lunch) to a small class yields a distinctly positive impact, lifting their math achievement score by an average of 6.75 points.
 
 #### Results: Interaction Effects
 
@@ -957,24 +939,7 @@ plot_interactions <- ggplot(interaction_data, aes(x = estimate, y = Clean_Term))
 plot_interactions
 ```
 
-The true efficacy of the class-size reduction is unveiled through the interaction terms, which
-directly answer our second question of interest regarding educational equity. While the intervention provides a baseline positive adjustment of 6.75 points for the majority group, the magnitude
-of this benefit expands dramatically for demographic subgroups.
-Specifically, the intervention exhibits large positive two-way interactions with both Minority
-Status (an additional 15.58 points) and Free/Reduced Lunch eligibility (an additional 7.35 points).
-This provides robust empirical evidence that small classes function as a targeted equalizing
-mechanism. The highly personalized instruction facilitated by a lower student-to-teacher ratio
-disproportionately benefits minority students, successfully mitigating the systemic disadvantages
-they face.
-To determine the full marginal effect of the small-class intervention on the most at-risk
-population—students who are both minority and eligible for free lunch—we must sum the main
-effect of the intervention with all of its corresponding interaction terms. While the three-way
-interaction reveals a negative adjustment (−12.58 points) for this specific intersectionality,
-the net mathematical treatment effect for this exceptionally marginalized subgroup remains
-fundamentally and strongly positive (6.75 + 15.58 + 7.35 − 12.58 = 17.10 points) when compared
-to their exact demographic peers in standard class assignments. Ultimately, the model proves
-that class-size reduction is universally beneficial, with the absolute largest achievement gains
-concentrated among the student populations that need them the most.
+The true efficacy of the class-size reduction is unveiled through the interaction terms, which directly answer our second question of interest regarding educational equity. While the intervention provides a baseline positive adjustment of 6.75 points for the majority group, the magnitude of this benefit expands dramatically for demographic subgroups. Specifically, the intervention exhibits large positive two-way interactions with both Minority Status (an additional 15.58 points) and Free/Reduced Lunch eligibility (an additional 7.35 points). This provides robust empirical evidence that small classes function as a targeted equalizing mechanism. The highly personalized instruction facilitated by a lower student-to-teacher ratio disproportionately benefits minority students, successfully mitigating the systemic disadvantages they face. To determine the full marginal effect of the small-class intervention on the most at-risk population—students who are both minority and eligible for free lunch—we must sum the main effect of the intervention with all of its corresponding interaction terms. While the three-way interaction reveals a negative adjustment (−12.58 points) for this specific intersectionality, the net mathematical treatment effect for this exceptionally marginalized subgroup remains fundamentally and strongly positive (6.75 + 15.58 + 7.35 − 12.58 = 17.10 points) when compared to their exact demographic peers in standard class assignments. Ultimately, the model proves that class-size reduction is universally beneficial, with the absolute largest achievement gains concentrated among the student populations that need them the most.
 
 ## Sensitivity analysis
 
@@ -1092,3 +1057,21 @@ Through a rigorously specified three-level Hierarchical Linear Model (HLM), we a
 Furthermore, recognizing the inherent vulnerabilities of longitudinal field trials, we conducted a rigorous Inverse Probability Weighting (IPW) sensitivity analysis. By mathematically adjusting for non-random student attrition, we demonstrated that our core equity findings are remarkably robust and not an artifact of survivor bias.
 
 Despite these robust analytical findings, several limitations warrant acknowledgment. Fidelity to the experimental design was occasionally compromised by administrative constraints, leading to some students transitioning between class types or specific classrooms violating their assigned headcount caps. Future research could extend this structural analysis by employing instrumental variable (IV) approaches to further isolate the causal estimand of the treatment-on-the-treated (TOT). Nevertheless, the statistical evidence presented in this report unequivocally supports policy initiatives prioritizing class-size reduction in early primary education, particularly within schools serving predominantly minority and low-income communities.
+
+### 
+
+## References
+
+Assari, S. (2018). Health disparities due to diminished return among black americans: Public policy solutions. Social Issues and Policy Review, 12(1):112–145.
+
+Finn, J. D. and Achilles, C. M. (1990). Answers and questions about class size: A statewide experiment. American educational research journal, 27(3):557–577.
+
+Krueger, A. B. (1999). Experimental estimates of education production functions. The quarterly journal of economics, 114(2):497–532. 10
+
+Krueger, A. B. and Whitmore, D. M. (2001). Would smaller classes help close the black-white achievement gap? Brookings papers on education policy, (4):1–38.
+
+Nye, B., Hedges, L. V., and Konstantopoulos, S. (2000). The effects of small classes on academic achievement: The results of the tennessee class size experiment. American educational research journal, 37(1):123–151.
+
+Raudenbush, S. W. and Bryk, A. S. (2002). Hierarchical linear models: Applications and data analysis methods, volume 1. sage.
+
+Word, E. et al. (1990). Student/teacher achievement ratio (star), tennessee’s k-3 class size study: Final summary report, 1985-1990. Technical report, Tennessee State Dept. of Education, Nashville.
